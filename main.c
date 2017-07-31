@@ -1,133 +1,240 @@
+#include <iostream>
 #include <pcap.h>
-#include <stdio.h>
+#include <netinet/ip.h>
 #include <stdint.h>
 #include <arpa/inet.h>
 #include <netinet/ip.h>
+#include "net/if.h"
+#include <cstdio>
+#include <string.h>
+#include "sys/ioctl.h"
 
-typedef struct arphdr
+
+typedef struct arphdr // Arps
 {
 
-    uint16_t htype;
-    uint16_t ptype;
-    u_char hlen;
-    u_char plen;
-    uint16_t oper;
-    u_char sha[6];
-    u_char spa[4];
-    u_char tha[6];
-    u_char tpa[4];
+    uint16_t htype; //hartype;
+    uint16_t ptype; //protype;
+    u_char hlen; //hardsize;
+    u_char plen; //prosize;
+    uint16_t oper; //opcode;
+    u_char sha[6]; //sendermac[6];
+    u_char spa[4]; //senderip[4];
+    u_char tha[6]; //targetmac[6];
+    u_char tpa[4]; //targetip[4];
 
 }arphdr_t;
 
 
-typedef struct ether_header
+typedef struct ether_header // Eths
 {
-    uint8_t dmac[6];
-    uint8_t smac[6];
-    uint16_t *type;
-}ethhdr_t;
 
-typedef struct ip_header
+    uint8_t dmac[6]; //destination[6];
+    uint8_t smac[6]; //source[6];
+    uint16_t *type; //eth_type;
+
+}ether_t;
+
+
+
+
+// ###For Reading MAC address: START
+
+unsigned char cMacAddr[8]; // Server's MAC address
+static int GetSvrMacAddress( char *pIface )
+
 {
-    uint8_t versionheaderl;
-    uint8_t difsrv;
-    uint16_t tlen;
-    uint16_t identification;
-    uint16_t frgoffset;
-    uint8_t ttlive;
-    uint8_t protocol;
-    uint16_t hdrcsum;
-    uint32_t sip;
-    uint32_t dip;
-}iphdr_t;
+    int nSD; // Socket descriptor
+    struct ifreq sIfReq; // Interface request
+    struct if_nameindex *pIfList; // Ptr to interface name index
+    struct if_nameindex *pListSave; // Ptr to interface name index
 
-typedef struct tcp_header
-{
-    uint16_t sport;
-    uint16_t dport;
-    uint32_t sqnum;
-    uint32_t acknum;
-    uint8_t hdrl;
-}tcphdr_t;
+    //
+    // Initialize this function
+    //
+    pIfList = (struct if_nameindex *)NULL;
+    pListSave = (struct if_nameindex *)NULL;
+#ifndef SIOCGIFADDR
+    // The kernel does not support the required ioctls
+    return( 0 );
+#endif
 
-
-int main(int arvc,char* argv[])
-{
-    int snaplen=2048;
-    int promisc=1;
-    int to_ms=512;
-    char errbuf[256];
-    ethhdr_t *ethheader = NULL;
-    iphdr_t *ipheader;
-    tcphdr_t *tcpheader = NULL;
-
-    struct pcap_pkthdr *pkthdr;
-    const u_char *pkt_data;
-    const u_char *payload;
-
-    pcap_t *handle;
-    handle = pcap_open_live("ens33", snaplen, promisc, to_ms, errbuf);
-
-    int number, i;
-    char sbuf[100], dbuf[100];
-
-    u_char packet[100];
-
-
-
-
-
-
-
-    while(1)
+    //
+    // Create a socket that we can use for all of our ioctls
+    //
+    nSD = socket( PF_INET, SOCK_STREAM, 0 );
+    if ( nSD < 0 )
     {
-        number = pcap_next_ex(handle, &pkthdr, &pkt_data);
-
-        if(number != 1 || pkt_data == NULL)
-        {
-            continue;
-        }
-
-
-        ethheader = (struct ethhdr_t *)(pkt_data);
-        ipheader = (struct iphdr_t *)(pkt_data+14);
-        int ipheaderlength = (ipheader->versionheaderl)&0X0f;
-        tcpheader = (struct tcphdr_t *)(pkt_data+14+ipheaderlength*4);
-        int tcpheaderlength = (tcpheader->hdrl) >> 4;
-
-        if(ntohs(ethheader->type) == 0x0806);
-        {
-
-            if(ntohs(tcpheader->sport) == 80)
-            {
-
-
-                inet_ntop(AF_INET, &ipheader->sip, &sbuf, 16);
-                inet_ntop(AF_INET, &ipheader->dip, &dbuf, 16);
-
-                printf("Packet Lengh is: %d\n", pkthdr->len);
-                printf("Destination MAC: ");
-                for(i=0; i<6;i++)printf("%02x:", ethheader->dmac[i]);
-                printf("\nSource MAC: ");
-                for(i=0; i<6;i++)printf("%02x:", ethheader->smac[i]);
-                printf("\n");
-                printf("Source IP: %s\n", sbuf);
-                printf("Destination IP: %s\n", dbuf);
-                printf("\n");
-                printf("Source port: %d\n", ntohs(tcpheader->sport));
-                printf("Destination port: %d\n", ntohs(tcpheader->dport));
-
-                payload = (u_char *)(pkt_data+14+ipheaderlength*4+tcpheaderlength*4);
-                printf(payload);
-
-                printf("\n-------------------------------------------------\n");
-            }
-        }
-
+        // Socket creation failed, this is a fatal error
+        printf( "File %s: line %d: Socket failed\n", __FILE__, __LINE__ );
+        return( 0 );
     }
-    return 0;
+
+    //
+    // Obtain a list of dynamically allocated structures
+    //
+    pIfList = pListSave = if_nameindex();
+
+    //
+    // Walk thru the array returned and query for each interface's
+    // address
+    //
+    for ( pIfList; *(char *)pIfList != 0; pIfList++ )
+    {
+        //
+        // Determine if we are processing the interface that we
+        // are interested in
+        //
+        if ( strcmp(pIfList->if_name, pIface) )
+            // Nope, check the next one in the list
+            continue;
+        strncpy( sIfReq.ifr_name, pIfList->if_name, IF_NAMESIZE );
+
+        //
+        // Get the MAC address for this interface
+        //
+        if ( ioctl(nSD, SIOCGIFHWADDR, &sIfReq) != 0 )
+        {
+            // We failed to get the MAC address for the interface
+            printf( "File %s: line %d: Ioctl failed\n", __FILE__, __LINE__ );
+            return( 0 );
+        }
+        memmove( (void *)&cMacAddr[0], (void *)&sIfReq.ifr_ifru.ifru_hwaddr.sa_data[0], 6 );
+        break;
+    }
+
+    //
+    // Clean up things and return
+    //
+
+    // if_freenameindex( pListSave );    ??
+    // close( nSD ); ??
+    return( 1 );
 }
 
 
+
+
+int main(int argc, char * argv[])
+{
+
+    bzero( (void *)&cMacAddr[0], sizeof(cMacAddr) );
+    if ( !GetSvrMacAddress(dev) )
+    {
+        // We failed to get the local host's MAC address
+        printf( "Fatal error: Failed to get local host's MAC address\n" );
+    }
+    printf( "HWaddr %02X:%02X:%02X:%02X:%02X:%02X\n",
+            cMacAddr[0], cMacAddr[1], cMacAddr[2],
+            cMacAddr[3], cMacAddr[4], cMacAddr[5] );
+
+    // ###For Reading MAC address: FINISH
+
+
+    uint8_t gatemac[6];
+
+
+    arphdr_t* arpheader; //Arps* arp;
+    ether_t *etherheader;
+
+    char *dev;
+    int snaplen=2048;
+    int promisc=1;
+    int to_ms=1000;
+    char errbuf[PCAP_ERRBUF_SIZE];
+    dev="ens33";
+
+    int number, i;
+    u_char packet[42];
+
+
+    struct pcap_pkthdr *pkthdr;
+    const u_char *pkt_data;
+
+    pcap_t *handle;
+    handle = pcap_open_live(dev, snaplen, promisc, to_ms, errbuf);
+
+
+    if (handle == NULL) {
+
+        printf(stderr, "Couldn't open device %s: %s\n", dev, errbuf);
+        return(2);
+    }
+
+
+    for(int i=0;i<6;i++)
+        packet[i]=255;
+    // for(int i=6;i<12;i++)
+    //   packet[i]=cMacAddr[i-6];
+    packet[6]=0;
+    packet[7]=80;
+    packet[8]=86;
+    packet[9]=225;
+    packet[10]=216;
+    packet[11]=128;
+    packet[12]=8;
+    packet[13]=6;
+    //eth setting
+    packet[14]=0;
+    packet[15]=1;
+    packet[16]=8;
+    packet[17]=0;
+    packet[18]=6;
+    packet[19]=4;
+    packet[20]=0;
+    packet[21]=1;
+    for(int i=22;i<28;i++)
+        packet[i]=packet[i-16];
+    //senderip
+    packet[28]=192;
+    packet[29]=168;
+    packet[30]=92;
+    packet[31]=2;
+    for(int i=32;i<6;i++)
+        packet[i]=0;
+    packet[38]=192;
+    packet[39]=168;
+    packet[40]=92;
+    packet[41]=137;
+
+
+
+    if (pcap_sendpacket(handle, packet, sizeof( packet )) != 0)
+    {
+
+        printf("Packet sending Failure\n");
+        continue;
+    }
+
+
+    else
+    {
+        while((number = pcap_next_ex(handle, &pkthdr, &pkt_data)) >= 0)
+        {
+
+            if(number == 0)
+            {
+                printf("Packet buffet time Expired\n");
+                continue;
+            }
+
+
+            if(packet != NULL)
+            {
+                ethheader=(ether_t*)packet;
+
+                if(ntohs(ethheader->type)==1544)
+                {
+                    arpheader=(arphdr_t*)(packet+14);
+
+                    for(int i=0;i<6;i++)gatemac[i]=arpheader->sendermac[i];
+                    for(i=0; i<6; i++)printf("Gate MAC: %02x:", gatemac[i]);
+                }
+            }
+        }
+    }
+
+    return 0;
+}
 
 
