@@ -1,44 +1,42 @@
-#include <iostream>
 #include <pcap.h>
 #include <netinet/ip.h>
 #include <stdint.h>
 #include <arpa/inet.h>
 #include <netinet/ip.h>
 #include "net/if.h"
-#include <cstdio>
 #include <string.h>
 #include "sys/ioctl.h"
 
 
-typedef struct arphdr // Arps
+
+typedef struct ether_header
 {
 
-    uint16_t htype; //hartype;
-    uint16_t ptype; //protype;
-    u_char hlen; //hardsize;
-    u_char plen; //prosize;
-    uint16_t oper; //opcode;
-    u_char sha[6]; //sendermac[6];
-    u_char spa[4]; //senderip[4];
-    u_char tha[6]; //targetmac[6];
-    u_char tpa[4]; //targetip[4];
-
-}arphdr_t;
-
-
-typedef struct ether_header // Eths
-{
-
-    uint8_t dmac[6]; //destination[6];
-    uint8_t smac[6]; //source[6];
-    uint16_t *type; //eth_type;
+    uint8_t dmac[6];
+    uint8_t smac[6];
+    uint16_t *type;
 
 }ether_t;
 
 
+typedef struct arphdr
+{
+
+    uint16_t htype;
+    uint16_t ptype;
+    u_char hlen;
+    u_char plen;
+    uint16_t oper;
+    u_char sha[6];
+    u_char spa[4];
+    u_char tha[6];
+    u_char tpa[4];
+
+}arphdr_t;
 
 
-// ###For Reading MAC address: START
+
+// ###For Reading MAC address: START###
 
 unsigned char cMacAddr[8]; // Server's MAC address
 static int GetSvrMacAddress( char *pIface )
@@ -118,6 +116,18 @@ static int GetSvrMacAddress( char *pIface )
 int main(int argc, char * argv[])
 {
 
+    char *dev;
+    int snaplen=2048;
+    int promisc=1;
+    int to_ms=1000;
+    char errbuf[PCAP_ERRBUF_SIZE];
+    dev="ens33";
+
+    int number, i;
+
+    u_char packet[60];
+
+
     bzero( (void *)&cMacAddr[0], sizeof(cMacAddr) );
     if ( !GetSvrMacAddress(dev) )
     {
@@ -128,24 +138,13 @@ int main(int argc, char * argv[])
             cMacAddr[0], cMacAddr[1], cMacAddr[2],
             cMacAddr[3], cMacAddr[4], cMacAddr[5] );
 
-    // ###For Reading MAC address: FINISH
+    // ###For Reading MAC address: FINISH###
 
 
     uint8_t gatemac[6];
 
-
-    arphdr_t* arpheader; //Arps* arp;
+    arphdr_t* arpheader;
     ether_t *etherheader;
-
-    char *dev;
-    int snaplen=2048;
-    int promisc=1;
-    int to_ms=1000;
-    char errbuf[PCAP_ERRBUF_SIZE];
-    dev="ens33";
-
-    int number, i;
-    u_char packet[42];
 
 
     struct pcap_pkthdr *pkthdr;
@@ -162,10 +161,8 @@ int main(int argc, char * argv[])
     }
 
 
-    for(int i=0;i<6;i++)
-        packet[i]=255;
-    // for(int i=6;i<12;i++)
-    //   packet[i]=cMacAddr[i-6];
+    for(i=0; i<6; i++)packet[i]=255; // 0xFF
+
     packet[6]=0;
     packet[7]=80;
     packet[8]=86;
@@ -201,9 +198,7 @@ int main(int argc, char * argv[])
 
     if (pcap_sendpacket(handle, packet, sizeof( packet )) != 0)
     {
-
         printf("Packet sending Failure\n");
-        continue;
     }
 
 
@@ -214,21 +209,22 @@ int main(int argc, char * argv[])
 
             if(number == 0)
             {
-                printf("Packet buffet time Expired\n");
+                printf("Packet buffer time Expired\n");
                 continue;
             }
 
 
             if(packet != NULL)
             {
-                ethheader=(ether_t*)packet;
+                etherheader=(ether_t*)packet;
 
-                if(ntohs(ethheader->type)==1544)
+
+                if(ntohs(etherheader->type)==1544)
                 {
                     arpheader=(arphdr_t*)(packet+14);
 
-                    for(int i=0;i<6;i++)gatemac[i]=arpheader->sendermac[i];
-                    for(i=0; i<6; i++)printf("Gate MAC: %02x:", gatemac[i]);
+                    for(int i=0;i<6;i++)gatemac[i]=arpheader->sha[i];
+                    for(i=0; i<6; i++)printf("Gate MAC: %02x", gatemac[i]);
                 }
             }
         }
