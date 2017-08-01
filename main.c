@@ -129,6 +129,8 @@ int main(int argc, char * argv[])
     dev="ens33";
 
     int number, i;
+    uint8_t hostip[6];
+
 
     int domains[] = { AF_INET, AF_INET6 };
 
@@ -169,9 +171,9 @@ int main(int argc, char * argv[])
 
     u_char packet[42];
 
-    for(i=0; i<6; i++)packet[i]=255; // 0xFF
+    for(i=0; i<6; i++)packet[i]=255; // 0xFF (BROADCAST)
 
-    packet[6]= cMacAddr[0]; //HOST MAC
+    packet[6]= cMacAddr[0]; //HOST MAC ADDRESS
     packet[7]= cMacAddr[1];
     packet[8]= cMacAddr[2];
     packet[9]= cMacAddr[3];
@@ -190,26 +192,21 @@ int main(int argc, char * argv[])
     packet[20]= 0;
     packet[21]= 1; //Resquest
 
-    for(int i=22;i<28;i++)packet[i]=packet[i-16]; //Sender MAC address
+    for(int i=22;i<28;i++)packet[i]=packet[i-16]; //HOST MAC ADDRESS
 
-    packet[28]=192;
-    packet[29]=168;
-    packet[30]=9;
-    packet[31]=128;
+    packet[28]=argv[1]; //HOST IP ADDRESS
+    packet[29]=argv[2];
+    packet[30]=argv[3];
+    packet[31]=argv[4];
 
     for(int i=32;i<6;i++)packet[i]=0;
 
-    packet[32]= 0x00;
-    packet[33]= 0x0C;
-    packet[34]= 0x29;
-    packet[35]= 0xB6;
-    packet[36]= 0xAD;
-    packet[37]= 0x1E;
+    for(int i=32;i<6;i++)packet[i]=0; //DO NOT KNOW TARGET'S MAC
 
-    packet[38]=192;
-    packet[39]=168;
-    packet[40]=9;
-    packet[41]=129;
+    packet[38]=argv[5];
+    packet[39]=argv[6];
+    packet[40]=argv[7];
+    packet[41]=argv[8];
 
 
     if (pcap_sendpacket(handle ,packet ,sizeof(packet)) != 0)
@@ -268,20 +265,20 @@ int main(int argc, char * argv[])
     packet[20]= 0;
     packet[21]= 1; //Resquest
 
-    for(int i=0;i<5;i++)packet[i+22]=targetmac[i];
+    for(int i=0;i<5;i++)packet[i+22]=targetmac[i]; //GATEWAY MAC
     packet[27]= 0x01;
 
-    packet[28]=192;
-    packet[29]=168;
-    packet[30]=9;
-    packet[31]=128;
+    packet[28]=argv[1]; //HOST IP ADDRESS
+    packet[29]=argv[2];
+    packet[30]=argv[3];
+    packet[31]=argv[4];
 
     for(int i=0;i<6;i++)packet[i+32]=targetmac[i];
 
-    packet[38]=192;
-    packet[39]=168;
-    packet[40]=9;
-    packet[41]=129;
+    packet[38]=argv[5];
+    packet[39]=argv[6];
+    packet[40]=argv[7];
+    packet[41]=argv[8];
 
 
     while(1)
